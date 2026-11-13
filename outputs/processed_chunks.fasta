@@ -1,0 +1,18 @@
+>sequence_1_chunk_1 start=0 end=8
+ATGCGTAC
+>sequence_1_chunk_2 start=6 end=14
+ACGTAGCT
+>sequence_1_chunk_3 start=12 end=20
+CTAGCTAG
+>sequence_2_chunk_1 start=0 end=8
+GCTAGCTA
+>sequence_2_chunk_2 start=6 end=14
+TAGCATCG
+>sequence_2_chunk_3 start=12 end=20
+CGATCGAT
+>sequence_3_chunk_1 start=0 end=8
+ATCGATCG
+>sequence_3_chunk_2 start=6 end=14
+CGATGCTA
+>sequence_3_chunk_3 start=12 end=20
+TAGCTAGC
