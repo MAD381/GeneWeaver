@@ -1,12 +1,21 @@
 import unittest
 
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+
 from data_pipeline.fasta_processor import (
     validate_sequence,
     chunk_sequence,
+    calculate_sequence_statistics,
+    sequence_fingerprint,
+    detect_duplicates,
+    analyze_chunks,
 )
 
 
 class TestFastaProcessor(unittest.TestCase):
+
+    # Original Week 1 tests
 
     def test_valid_dna(self):
         self.assertTrue(validate_sequence("ATGC"))
@@ -35,7 +44,52 @@ class TestFastaProcessor(unittest.TestCase):
         with self.assertRaises(ValueError):
             chunk_sequence("ATGC", chunk_size=4, overlap=4)
 
+    # New enhancement tests
+
+    def test_sequence_statistics(self):
+        result = calculate_sequence_statistics("ATGCCGNN")
+
+        self.assertEqual(result["length"], 8)
+        self.assertEqual(result["A"], 1)
+        self.assertEqual(result["T"], 1)
+        self.assertEqual(result["G"], 2)
+        self.assertEqual(result["C"], 2)
+        self.assertEqual(result["GC_percentage"], 50.0)
+        self.assertEqual(result["AT_percentage"], 25.0)
+        self.assertEqual(result["ambiguous_bases"], 2)
+
+    def test_sequence_fingerprint(self):
+        first = sequence_fingerprint("ATGC")
+        second = sequence_fingerprint("ATGC")
+
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 64)
+
+    def test_duplicate_detection(self):
+        records = [
+            SeqRecord(Seq("ATGC"), id="sequence_1"),
+            SeqRecord(Seq("ATGC"), id="sequence_2"),
+            SeqRecord(Seq("GGCC"), id="sequence_1"),
+        ]
+
+        result = detect_duplicates(records)
+
+        self.assertEqual(result["duplicate_ids"], ["sequence_1"])
+        self.assertEqual(result["duplicate_sequences"], [["sequence_1", "sequence_2"]])
+
+    def test_chunk_analysis(self):
+        chunks = [
+            (0, 4, "ATGC"),
+            (2, 6, "GCGC"),
+        ]
+
+        result = analyze_chunks(chunks)
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["length"], 4)
+        self.assertEqual(result[0]["GC_percentage"], 50.0)
+        self.assertEqual(result[1]["GC_percentage"], 100.0)
+
 
 if __name__ == "__main__":
     unittest.main()
-
