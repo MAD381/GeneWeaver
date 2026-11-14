@@ -10,6 +10,7 @@ from data_pipeline.fasta_processor import (
     sequence_fingerprint,
     detect_duplicates,
     analyze_chunks,
+    generate_reverse_complement,
 )
 
 
@@ -44,7 +45,7 @@ class TestFastaProcessor(unittest.TestCase):
         with self.assertRaises(ValueError):
             chunk_sequence("ATGC", chunk_size=4, overlap=4)
 
-    # New enhancement tests
+    # Sequence statistics tests
 
     def test_sequence_statistics(self):
         result = calculate_sequence_statistics("ATGCCGNN")
@@ -89,6 +90,20 @@ class TestFastaProcessor(unittest.TestCase):
         self.assertEqual(result[0]["length"], 4)
         self.assertEqual(result[0]["GC_percentage"], 50.0)
         self.assertEqual(result[1]["GC_percentage"], 100.0)
+
+    # Reverse complement tests
+
+    def test_reverse_complement(self):
+        result = generate_reverse_complement("ATGC")
+        self.assertEqual(result, "GCAT")
+
+    def test_reverse_complement_lowercase(self):
+        result = generate_reverse_complement("atgc")
+        self.assertEqual(result, "GCAT")
+
+    def test_reverse_complement_invalid_dna(self):
+        with self.assertRaises(ValueError):
+            generate_reverse_complement("ATGX")
 
 
 if __name__ == "__main__":
