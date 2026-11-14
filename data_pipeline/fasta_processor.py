@@ -6,9 +6,21 @@ from Bio.SeqRecord import SeqRecord
 VALID_DNA_BASES = set("ACGTRYSWKMBDHVN")
 
 
+def find_invalid_bases(sequence):
+    """Return invalid DNA characters and their positions."""
+    sequence = str(sequence).strip().upper()
+    invalid_bases = []
+
+    for position, base in enumerate(sequence, start=1):
+        if base not in VALID_DNA_BASES:
+            invalid_bases.append((position, base))
+
+    return invalid_bases
+
+
 def validate_sequence(sequence):
     sequence = str(sequence).strip().upper()
-    return bool(sequence) and all(base in VALID_DNA_BASES for base in sequence)
+    return bool(sequence) and not find_invalid_bases(sequence)
 
 
 def parse_fasta(file_path):
@@ -22,8 +34,16 @@ def parse_fasta(file_path):
     for record in SeqIO.parse(file_path, "fasta"):
         sequence = str(record.seq).upper()
 
-        if not validate_sequence(sequence):
-            raise ValueError(f"Invalid DNA sequence: {record.id}")
+        if not sequence:
+            raise ValueError(f"Empty DNA sequence: {record.id}")
+
+        invalid_bases = find_invalid_bases(sequence)
+
+        if invalid_bases:
+            details = ", ".join(
+                f"'{base}' at position {position}" for position, base in invalid_bases
+            )
+            raise ValueError(f"Invalid DNA sequence in {record.id}: {details}")
 
         record.seq = Seq(sequence)
         records.append(record)
