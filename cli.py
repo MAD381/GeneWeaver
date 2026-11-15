@@ -1,3 +1,4 @@
+
 import argparse
 import sys
 from pathlib import Path
@@ -12,18 +13,17 @@ from data_pipeline.fasta_processor import (
     chunk_sequence,
 )
 
-# --------------------------------------------------
-# 1. COMMAND-LINE INPUT VALIDATION
-# --------------------------------------------------
 
+# ==========================================================
+# COMMAND-LINE INPUT VALIDATION
+# ==========================================================
 
 def positive_integer(value):
     """Accept only positive integers."""
-
     try:
         number = int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError("Value must be an integer.")
+        raise argparse.ArgumentTypeError("Enter a valid integer.")
 
     if number <= 0:
         raise argparse.ArgumentTypeError("Value must be greater than zero.")
@@ -33,11 +33,10 @@ def positive_integer(value):
 
 def non_negative_integer(value):
     """Accept zero or positive integers."""
-
     try:
         number = int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError("Value must be zero or greater.")
+        raise argparse.ArgumentTypeError("Enter a valid integer.")
 
     if number < 0:
         raise argparse.ArgumentTypeError("Value cannot be negative.")
@@ -45,72 +44,66 @@ def non_negative_integer(value):
     return number
 
 
-# --------------------------------------------------
-# 2. MAIN FASTA PROCESSING PIPELINE
-# --------------------------------------------------
+# ==========================================================
+# WEEK 2: FASTA PROCESSING PIPELINE
+# ==========================================================
 
-
-def run_pipeline(input_file, output_dir, chunk_size, overlap):
-    """Process FASTA sequences with validation and progress reporting."""
+def run_pipeline(
+    input_file,
+    output_dir,
+    chunk_size,
+    overlap,
+    ai_analysis=False,
+    training_csv=None,
+):
+    """Process FASTA records and optionally run DNA intelligence."""
 
     input_path = Path(input_file)
     output_path = Path(output_dir)
 
-    # Validate input file
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input FASTA file not found: {input_path}")
-
     if not input_path.is_file():
-        raise ValueError(f"Input path is not a file: {input_path}")
+        raise FileNotFoundError(
+            f"Input FASTA file not found: {input_path}"
+        )
 
-    # Validate chunk settings
-    if not isinstance(chunk_size, int) or chunk_size <= 0:
-        raise ValueError("Chunk size must be a positive integer.")
+    if chunk_size <= 0:
+        raise ValueError("Chunk size must be greater than zero.")
 
-    if not isinstance(overlap, int) or overlap < 0:
-        raise ValueError("Overlap must be a non-negative integer.")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError(
+            "Overlap must be non-negative and smaller than chunk size."
+        )
 
-    if overlap >= chunk_size:
-        raise ValueError("Overlap must be smaller than chunk size.")
-
-    # Validate output directory
-    if output_path.exists() and not output_path.is_dir():
-        raise ValueError(f"Output path exists but is not a directory: {output_path}")
-
-    # Create output directory if necessary
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Parse FASTA using the existing Week 1 function
+    # Use the existing Week 1 FASTA parser.
     records = parse_fasta(str(input_path))
 
     if not records:
-        raise ValueError("No FASTA sequences found in the input file.")
+        raise ValueError("No FASTA sequences found.")
 
     processed_records = []
     total_chunks = 0
 
-    print("\nGENEWEAVER - WEEK 2")
-    print("-------------------")
+    print("\n====================================")
+    print("       GENEWEAVER - WEEK 1 & 2")
+    print("====================================")
     print("FASTA Processing Pipeline")
-    print("------------------------")
-    print(f"Input file          : {input_path}")
-    print(f"Chunk size          : {chunk_size}")
-    print(f"Overlap             : {overlap}")
-    print(f"Sequences found     : {len(records)}")
-    print("\nProcessing sequences...\n")
+    print("------------------------------------")
+    print("Processing sequences...\n")
 
-    # Process sequences with progress bar
-    for record in tqdm(records, desc="Processing", unit="sequence", total=len(records)):
-
+    # Generate overlapping chunks.
+    for record in tqdm(records, desc="Processing", unit="sequence"):
         record_id = record.id
         sequence = str(record.seq)
 
-        # Generate chunks using Week 1 function
-        chunks = chunk_sequence(sequence, chunk_size=chunk_size, overlap=overlap)
+        chunks = chunk_sequence(
+            sequence,
+            chunk_size,
+            overlap,
+        )
 
-        # Convert chunks into FASTA records
         for index, (start, end, chunk) in enumerate(chunks, start=1):
-
             processed_record = SeqRecord(
                 Seq(chunk),
                 id=f"{record_id}_chunk_{index}",
@@ -120,92 +113,117 @@ def run_pipeline(input_file, output_dir, chunk_size, overlap):
             processed_records.append(processed_record)
             total_chunks += 1
 
-    # Save processed FASTA records
+    # Save the processed FASTA file.
     output_file = output_path / "processed_chunks.fasta"
 
-    SeqIO.write(processed_records, str(output_file), "fasta")
+    SeqIO.write(
+        processed_records,
+        str(output_file),
+        "fasta",
+    )
 
-    # Final processing summary
-    summary = {
-        "total_sequences": len(records),
-        "total_chunks": total_chunks,
+    print("\nFASTA processing completed!")
+    print("------------------------------------")
+    print(f"Sequences processed : {len(records)}")
+    print(f"Chunks generated    : {total_chunks}")
+    print(f"Output file         : {output_file}")
+    print("Status              : SUCCESS")
+
+    # ======================================================
+    # HYBRID AI INTEGRATION
+    # ======================================================
+
+    if ai_analysis or training_csv:
+
+        print("\nStarting Hybrid DNA Intelligence...")
+
+        from ai_engine.dna_intelligence import run_ai_analysis
+
+        run_ai_analysis(
+            records=records,
+            output_dir=output_path,
+            training_csv=training_csv,
+        )
+
+    return {
+        "sequences_processed": len(records),
+        "chunks_generated": total_chunks,
         "output_file": str(output_file),
-        "status": "SUCCESS",
     }
 
-    print("\nProcessing completed successfully!")
-    print("-----------------------------------")
-    print(f"Sequences processed : {summary['total_sequences']}")
-    print(f"Chunks generated    : {summary['total_chunks']}")
-    print(f"Output file         : {summary['output_file']}")
-    print(f"Status              : {summary['status']}")
 
-    return summary
-
-
-# --------------------------------------------------
-# 3. COMMAND-LINE INTERFACE
-# --------------------------------------------------
-
+# ==========================================================
+# COMMAND-LINE INTERFACE
+# ==========================================================
 
 def main():
 
     parser = argparse.ArgumentParser(
         description=(
-            "GeneWeaver - FASTA Processing Pipeline "
-            "with sequence chunking and progress reporting"
-        ),
-        epilog=(
-            "Example: python cli.py --input data/sample.fasta "
-            "--output-dir outputs --chunk-size 1000 --overlap 100"
-        ),
+            "GeneWeaver: FASTA Processing and "
+            "Hybrid DNA Intelligence Pipeline"
+        )
     )
 
+    # Existing Week 2 arguments.
     parser.add_argument(
-        "--input", default="data/sample.fasta", help="Input FASTA file path"
+        "--input",
+        default="data/sample.fasta",
+        help="Input FASTA file path",
     )
 
     parser.add_argument(
         "--output-dir",
         default="outputs",
-        help="Directory where processed FASTA will be saved",
+        help="Output directory",
     )
 
     parser.add_argument(
         "--chunk-size",
         type=positive_integer,
         default=1000,
-        help="Number of bases in each chunk (must be positive)",
+        help="Number of DNA bases in each chunk",
     )
 
     parser.add_argument(
         "--overlap",
         type=non_negative_integer,
         default=100,
-        help="Overlapping bases between chunks (default: 100)",
+        help="Overlapping bases between chunks",
+    )
+
+    # New Hybrid AI arguments.
+    parser.add_argument(
+        "--ai-analysis",
+        action="store_true",
+        help="Enable DNA intelligence analysis",
+    )
+
+    parser.add_argument(
+        "--training-csv",
+        default=None,
+        help="Optional labelled CSV file for Random Forest training",
     )
 
     args = parser.parse_args()
 
     try:
-
         run_pipeline(
             input_file=args.input,
             output_dir=args.output_dir,
             chunk_size=args.chunk_size,
             overlap=args.overlap,
+            ai_analysis=args.ai_analysis,
+            training_csv=args.training_csv,
         )
 
-    except (ValueError, OSError) as error:
-
-        print(f"\nERROR: {error}", file=sys.stderr)
-
+    except (ValueError, OSError, RuntimeError) as error:
+        print(
+            f"\nERROR: {error}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-
-# --------------------------------------------------
-# 4. PROGRAM ENTRY POINT
-# --------------------------------------------------
 
 if __name__ == "__main__":
     main()
