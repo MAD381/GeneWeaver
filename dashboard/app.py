@@ -9,7 +9,9 @@ from data_pipeline.fasta_processor import (
     calculate_sequence_statistics,
     generate_reverse_complement,
 )
+
 from ai_engine.dna_intelligence import generate_dna_insights
+from dashboard.gc_analytics import display_gc_analytics
 
 st.set_page_config(
     page_title="GeneWeaver DNA Intelligence",
@@ -18,6 +20,7 @@ st.set_page_config(
 )
 
 st.title("🧬 GeneWeaver DNA Intelligence Dashboard")
+
 st.write(
     "An AI-assisted bioinformatics interface for FASTA processing, "
     "DNA statistics, pattern detection, and sequence exploration."
@@ -65,6 +68,12 @@ try:
     selected_record = records[selected_index]
     sequence = str(selected_record.seq).upper()
 
+    # GC Content Analytics for all uploaded sequences
+    st.divider()
+    display_gc_analytics(records)
+    st.divider()
+
+    # Selected Sequence Overview
     st.header("Sequence Overview")
 
     col1, col2, col3 = st.columns(3)
@@ -73,20 +82,28 @@ try:
     col2.metric("Sequence Length", f"{len(sequence):,} bases")
     col3.metric("Total Sequences", len(records))
 
+    # DNA Statistics
     st.subheader("DNA Statistics")
 
     statistics = calculate_sequence_statistics(sequence)
 
     stat_columns = st.columns(4)
 
-    stat_columns[0].metric("GC Content", f"{statistics['GC_percentage']}%")
-    stat_columns[1].metric("AT Content", f"{statistics['AT_percentage']}%")
+    stat_columns[0].metric(
+        "GC Content",
+        f"{statistics['GC_percentage']}%",
+    )
+    stat_columns[1].metric(
+        "AT Content",
+        f"{statistics['AT_percentage']}%",
+    )
     stat_columns[2].metric("A Bases", statistics["A"])
     stat_columns[3].metric("T Bases", statistics["T"])
 
     st.write("Complete statistics")
     st.json(statistics)
 
+    # DNA Pattern Detection
     st.subheader("DNA Pattern Detection")
 
     analysis = generate_dna_insights(sequence)
@@ -98,8 +115,12 @@ try:
         pattern_columns,
         patterns.items(),
     ):
-        column.metric(pattern_name.replace("_", " "), count)
+        column.metric(
+            pattern_name.replace("_", " "),
+            count,
+        )
 
+    # AI-Assisted Insights
     st.subheader("AI-Assisted DNA Insights")
 
     for insight in analysis["insights"]:
@@ -111,6 +132,7 @@ try:
         "or biological significance."
     )
 
+    # Reverse Complement
     st.subheader("Reverse Complement")
 
     reverse_complement = generate_reverse_complement(sequence)
@@ -121,6 +143,7 @@ try:
         height=150,
     )
 
+    # Original Sequence
     st.subheader("Original DNA Sequence")
 
     st.text_area(
@@ -129,6 +152,7 @@ try:
         height=150,
     )
 
+    # JSON Report
     report = {
         "sequence_id": selected_record.id,
         "sequence_length": len(sequence),

@@ -46,4 +46,4 @@ Our vision is to build an intelligent bioinformatics platform that makes DNA seq
 
 GeneWeaver brings together bioinformatics, Python engineering, machine learning and scalable computing in one extensible project.
 
-*Note: Machine-learning predictions depend on the quality and scientific validity of the supplied training dataset. NGG-like pattern detection alone does not establish CRISPR target suitability.*
+*Note: Machine-learning predictions depend on the quality and scientific validity of the supplied training dataset. NGG-like pattern detection alone does not establish CRISPR target suitability.*+
