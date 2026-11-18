@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import tempfile
@@ -8,6 +10,11 @@ from data_pipeline.fasta_processor import (
     parse_fasta,
     calculate_sequence_statistics,
     generate_reverse_complement,
+)
+
+from data_pipeline.motif_search import (
+    search_motif,
+    summarize_motif_search,
 )
 
 from ai_engine.dna_intelligence import generate_dna_insights
@@ -71,6 +78,116 @@ try:
     # GC Content Analytics for all uploaded sequences
     st.divider()
     display_gc_analytics(records)
+    st.divider()
+
+    # Custom DNA Motif Search
+    st.header("🔬 Custom DNA Motif Search")
+
+    st.write(
+        "Enter a DNA motif to search across all sequences "
+        "in your uploaded FASTA file."
+    )
+
+    with st.form("motif_search_form"):
+        motif_input = st.text_input(
+            "Enter DNA motif (example: ATG)",
+            placeholder="Enter A, T, G, C sequence",
+        )
+
+        search_submitted = st.form_submit_button("Search DNA Motif")
+
+    if search_submitted:
+        try:
+            motif_results = search_motif(records, motif_input)
+
+            summary = summarize_motif_search(motif_results)
+
+            st.success("Motif search completed successfully.")
+
+            metric_columns = st.columns(3)
+
+            metric_columns[0].metric(
+                "Total Sequences",
+                summary["total_sequences"],
+            )
+
+            metric_columns[1].metric(
+                "Sequences with Matches",
+                summary["sequences_with_matches"],
+            )
+
+            metric_columns[2].metric(
+                "Total Occurrences",
+                summary["total_occurrences"],
+            )
+
+            st.subheader("Motif Search Results")
+
+            display_results = []
+
+            for result in motif_results:
+                display_results.append(
+                    {
+                        "Sequence ID": result["sequence_id"],
+                        "Sequence Length": result["sequence_length"],
+                        "Motif": result["motif"],
+                        "Occurrence Count": result["occurrence_count"],
+                        "Positions (1-based)": ", ".join(
+                            str(position) for position in result["positions"]
+                        ),
+                    }
+                )
+
+            st.dataframe(
+                display_results,
+                use_container_width=True,
+            )
+
+            # Prepare downloadable CSV report
+            csv_buffer = io.StringIO()
+
+            writer = csv.DictWriter(
+                csv_buffer,
+                fieldnames=[
+                    "sequence_id",
+                    "sequence_length",
+                    "motif",
+                    "occurrence_count",
+                    "positions",
+                ],
+            )
+
+            writer.writeheader()
+
+            for result in motif_results:
+                writer.writerow(
+                    {
+                        "sequence_id": result["sequence_id"],
+                        "sequence_length": result["sequence_length"],
+                        "motif": result["motif"],
+                        "occurrence_count": result["occurrence_count"],
+                        "positions": ", ".join(
+                            str(position) for position in result["positions"]
+                        ),
+                    }
+                )
+
+            st.download_button(
+                label="Download Motif Search Results (CSV)",
+                data=csv_buffer.getvalue(),
+                file_name="geneweaver_motif_results.csv",
+                mime="text/csv",
+            )
+
+            st.caption(
+                "Positions use 1-based indexing. Overlapping motif "
+                "occurrences are included. Only A, T, G and C motifs "
+                "are accepted by this search engine."
+            )
+
+        except (ValueError, TypeError) as error:
+            st.error(f"Motif search error: {error}")
+
     st.divider()
 
     # Selected Sequence Overview
