@@ -17,6 +17,8 @@ from data_pipeline.motif_search import (
     summarize_motif_search,
 )
 
+from data_pipeline.pairwise_comparison import compare_sequences
+
 from ai_engine.dna_intelligence import generate_dna_insights
 from dashboard.gc_analytics import display_gc_analytics
 
@@ -75,7 +77,7 @@ try:
     selected_record = records[selected_index]
     sequence = str(selected_record.seq).upper()
 
-    # GC Content Analytics for all uploaded sequences
+    # GC Content Analytics
     st.divider()
     display_gc_analytics(records)
     st.divider()
@@ -99,7 +101,6 @@ try:
     if search_submitted:
         try:
             motif_results = search_motif(records, motif_input)
-
             summary = summarize_motif_search(motif_results)
 
             st.success("Motif search completed successfully.")
@@ -143,7 +144,6 @@ try:
                 use_container_width=True,
             )
 
-            # Prepare downloadable CSV report
             csv_buffer = io.StringIO()
 
             writer = csv.DictWriter(
@@ -187,6 +187,185 @@ try:
 
         except (ValueError, TypeError) as error:
             st.error(f"Motif search error: {error}")
+
+    st.divider()
+
+    # Pairwise DNA Sequence Comparison
+    st.header("🧬 Pairwise DNA Sequence Comparison")
+
+    st.write(
+        "Select two sequences from your FASTA file to align them "
+        "and examine their matching and differing bases."
+    )
+
+    if len(records) < 2:
+        st.warning(
+            "Upload a FASTA file containing at least two sequences "
+            "to use pairwise comparison."
+        )
+
+    else:
+        sequence_options = list(range(len(records)))
+
+        with st.form("pairwise_comparison_form"):
+            comparison_col1, comparison_col2 = st.columns(2)
+
+            with comparison_col1:
+                first_index = st.selectbox(
+                    "First DNA sequence",
+                    options=sequence_options,
+                    format_func=lambda i: (
+                        f"{records[i].id} — {len(records[i].seq)} bases"
+                    ),
+                    key="comparison_sequence_1",
+                )
+
+            with comparison_col2:
+                second_index = st.selectbox(
+                    "Second DNA sequence",
+                    options=sequence_options,
+                    index=1,
+                    format_func=lambda i: (
+                        f"{records[i].id} — {len(records[i].seq)} bases"
+                    ),
+                    key="comparison_sequence_2",
+                )
+
+            comparison_submitted = st.form_submit_button("Compare DNA Sequences")
+
+        if comparison_submitted:
+            try:
+                first_record = records[first_index]
+                second_record = records[second_index]
+
+                comparison = compare_sequences(
+                    str(first_record.seq),
+                    str(second_record.seq),
+                )
+
+                st.success("DNA sequence comparison completed.")
+
+                st.subheader("Comparison Summary")
+
+                metric_columns = st.columns(4)
+
+                metric_columns[0].metric(
+                    "Sequence Identity",
+                    f"{comparison['identity_percentage']}%",
+                )
+
+                metric_columns[1].metric(
+                    "Matching Bases",
+                    comparison["matches"],
+                )
+
+                metric_columns[2].metric(
+                    "Mismatches",
+                    comparison["mismatches"],
+                )
+
+                metric_columns[3].metric(
+                    "Gaps",
+                    comparison["gaps"],
+                )
+
+                st.subheader("Global Sequence Alignment")
+
+                st.text(f"Sequence 1 ({first_record.id}):")
+                st.code(comparison["aligned_sequence_1"])
+
+                st.text(f"Sequence 2 ({second_record.id}):")
+                st.code(comparison["aligned_sequence_2"])
+
+                st.write(f"**Alignment score:** " f"{comparison['alignment_score']}")
+
+                st.write(
+                    f"**Alignment length:** "
+                    f"{comparison['alignment_length']} columns"
+                )
+
+                st.write(
+                    "**Mismatch positions (1-based alignment columns):** "
+                    + (
+                        ", ".join(
+                            str(position)
+                            for position in comparison["mismatch_positions"]
+                        )
+                        if comparison["mismatch_positions"]
+                        else "None"
+                    )
+                )
+
+                st.write(
+                    "**Gap positions (1-based alignment columns):** "
+                    + (
+                        ", ".join(
+                            str(position) for position in comparison["gap_positions"]
+                        )
+                        if comparison["gap_positions"]
+                        else "None"
+                    )
+                )
+
+                st.subheader("Detailed Comparison")
+
+                comparison_table = [
+                    {
+                        "Measurement": "Matches",
+                        "Value": comparison["matches"],
+                    },
+                    {
+                        "Measurement": "Mismatches",
+                        "Value": comparison["mismatches"],
+                    },
+                    {
+                        "Measurement": "Gaps",
+                        "Value": comparison["gaps"],
+                    },
+                    {
+                        "Measurement": "Identity Percentage",
+                        "Value": (f"{comparison['identity_percentage']}%"),
+                    },
+                    {
+                        "Measurement": "Alignment Score",
+                        "Value": comparison["alignment_score"],
+                    },
+                ]
+
+                st.dataframe(
+                    comparison_table,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                comparison_report = {
+                    "sequence_1_id": first_record.id,
+                    "sequence_2_id": second_record.id,
+                    **comparison,
+                }
+
+                st.download_button(
+                    label="Download Pairwise Comparison Report (JSON)",
+                    data=json.dumps(
+                        comparison_report,
+                        indent=4,
+                    ),
+                    file_name="geneweaver_pairwise_comparison.json",
+                    mime="application/json",
+                )
+
+                st.caption(
+                    "Global alignment uses Needleman-Wunsch scoring. "
+                    "Identity is calculated as matching bases divided "
+                    "by total alignment columns, including gaps. "
+                    "Mismatch and gap positions refer to alignment "
+                    "columns, not original sequence coordinates. "
+                    "Ambiguous IUPAC bases are accepted, but are counted "
+                    "as matches only when their symbols are identical."
+                )
+
+            except (ValueError, TypeError) as error:
+                st.error(f"Sequence comparison error: {error}")
 
     st.divider()
 
