@@ -153,7 +153,9 @@ def parse_fasta(file_path):
     if not file_path.exists():
         raise FileNotFoundError(f"FASTA file not found: {file_path}")
 
-    records = list(SeqIO.parse(file_path, "fasta"))
+    # Explicitly open and close the FASTA file.
+    with open(file_path, "r", encoding="utf-8") as fasta_file:
+        records = list(SeqIO.parse(fasta_file, "fasta"))
 
     if not records:
         raise ValueError("No FASTA sequences found.")
@@ -254,7 +256,11 @@ def process_fasta(input_file, output_dir, chunk_size=1000, overlap=100):
     for record in records:
         sequence = str(record.seq).upper()
 
-        chunks = chunk_sequence(sequence, chunk_size=chunk_size, overlap=overlap)
+        chunks = chunk_sequence(
+            sequence,
+            chunk_size=chunk_size,
+            overlap=overlap,
+        )
 
         for index, (start, end, chunk) in enumerate(chunks, start=1):
             chunk_record = SeqRecord(

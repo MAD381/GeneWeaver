@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import json
 import os
@@ -21,6 +22,11 @@ from data_pipeline.pairwise_comparison import compare_sequences
 
 from ai_engine.dna_intelligence import generate_dna_insights
 from dashboard.gc_analytics import display_gc_analytics
+from data_pipeline.analysis_report import (
+    build_analysis_report,
+    export_json_report,
+    export_csv_report,
+)
 
 st.set_page_config(
     page_title="GeneWeaver DNA Intelligence",
@@ -50,6 +56,15 @@ if uploaded_file is None:
     st.warning("Upload a FASTA file to begin DNA analysis.")
     st.stop()
 
+# Keep optional analysis results associated with the uploaded FASTA file.
+upload_bytes = uploaded_file.getvalue()
+upload_fingerprint = hashlib.sha256(upload_bytes).hexdigest()
+
+if st.session_state.get("geneweaver_upload_fingerprint") != upload_fingerprint:
+    st.session_state["geneweaver_upload_fingerprint"] = upload_fingerprint
+    st.session_state["geneweaver_motif_results"] = None
+    st.session_state["geneweaver_pairwise_comparison"] = None
+
 temp_path = None
 
 try:
@@ -57,7 +72,7 @@ try:
         delete=False,
         suffix=".fasta",
     ) as temp_file:
-        temp_file.write(uploaded_file.getvalue())
+        temp_file.write(upload_bytes)
         temp_path = temp_file.name
 
     records = parse_fasta(temp_path)
@@ -99,8 +114,10 @@ try:
         search_submitted = st.form_submit_button("Search DNA Motif")
 
     if search_submitted:
+        st.session_state["geneweaver_motif_results"] = None
         try:
             motif_results = search_motif(records, motif_input)
+            st.session_state["geneweaver_motif_results"] = motif_results
             summary = summarize_motif_search(motif_results)
 
             st.success("Motif search completed successfully.")
@@ -234,6 +251,7 @@ try:
             comparison_submitted = st.form_submit_button("Compare DNA Sequences")
 
         if comparison_submitted:
+            st.session_state["geneweaver_pairwise_comparison"] = None
             try:
                 first_record = records[first_index]
                 second_record = records[second_index]
@@ -343,6 +361,7 @@ try:
                     "sequence_2_id": second_record.id,
                     **comparison,
                 }
+                st.session_state["geneweaver_pairwise_comparison"] = comparison_report
 
                 st.download_button(
                     label="Download Pairwise Comparison Report (JSON)",
@@ -464,6 +483,62 @@ try:
         file_name=f"{selected_record.id}_geneweaver_report.json",
         mime="application/json",
     )
+
+    # Consolidated Analysis Report
+    st.divider()
+    st.header("📄 Consolidated Analysis Report")
+
+    st.write(
+        "Download a combined report containing sequence statistics, "
+        "AI-assisted insights, reverse complements, and any motif-search "
+        "or pairwise-comparison results completed for this FASTA file."
+    )
+
+    consolidated_report = build_analysis_report(
+        records,
+        motif_results=st.session_state.get("geneweaver_motif_results"),
+        comparison_result=st.session_state.get("geneweaver_pairwise_comparison"),
+    )
+
+    with tempfile.TemporaryDirectory() as report_dir:
+        json_output_path = os.path.join(
+            report_dir,
+            "geneweaver_consolidated_report.json",
+        )
+        csv_output_path = os.path.join(
+            report_dir,
+            "geneweaver_consolidated_report.csv",
+        )
+
+        export_json_report(consolidated_report, json_output_path)
+        export_csv_report(consolidated_report, csv_output_path)
+
+        with open(json_output_path, "rb") as json_file:
+            consolidated_json_data = json_file.read()
+
+        with open(csv_output_path, "rb") as csv_file:
+            consolidated_csv_data = csv_file.read()
+
+    report_col1, report_col2 = st.columns(2)
+
+    with report_col1:
+        st.download_button(
+            label="Download Complete Analysis Report (JSON)",
+            data=consolidated_json_data,
+            file_name="geneweaver_consolidated_report.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+    with report_col2:
+        st.download_button(
+            label="Download Complete Analysis Report (CSV)",
+            data=consolidated_csv_data,
+            file_name="geneweaver_consolidated_report.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
 
 except Exception as error:
     st.error(f"Analysis failed: {error}")
