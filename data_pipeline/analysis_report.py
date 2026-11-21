@@ -9,6 +9,9 @@ from data_pipeline.fasta_processor import (
     calculate_sequence_statistics,
     generate_reverse_complement,
 )
+
+from data_pipeline.quality_control import run_quality_control
+
 from ai_engine.dna_intelligence import generate_dna_insights
 
 
@@ -20,20 +23,32 @@ def build_analysis_report(
     """
     Build a consolidated report for uploaded DNA sequences.
 
-    Optional motif and pairwise results can be included.
+    Includes:
+    - DNA statistics
+    - AI-assisted insights
+    - Reverse complements
+    - DNA quality control
+    - Optional motif search results
+    - Optional pairwise comparison results
     """
 
     if not records:
         raise ValueError("At least one DNA sequence is required.")
 
+    # Run quality control on all sequences.
+    qc_report = run_quality_control(records)
+
     sequence_reports = []
 
-    for record in records:
+    for index, record in enumerate(records):
         sequence = str(record.seq).strip().upper()
 
         statistics = calculate_sequence_statistics(sequence)
         analysis = generate_dna_insights(sequence)
         reverse_complement = generate_reverse_complement(sequence)
+
+        # Get QC results for this sequence.
+        quality = qc_report["results"][index]
 
         sequence_reports.append(
             {
@@ -44,16 +59,21 @@ def build_analysis_report(
                 "patterns": analysis["patterns"],
                 "insights": analysis["insights"],
                 "reverse_complement": str(reverse_complement),
+                "quality_control": quality,
             }
         )
 
     report = {
         "report_title": "GeneWeaver Consolidated DNA Analysis Report",
-        "report_version": "1.0",
+        "report_version": "1.1",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "project": "GeneWeaver",
         "sequence_count": len(sequence_reports),
         "sequences": sequence_reports,
+        "quality_control": {
+            "summary": qc_report["summary"],
+            "results": qc_report["results"],
+        },
         "motif_search_results": motif_results or [],
         "pairwise_comparison": comparison_result,
         "methodology_notes": [
@@ -63,6 +83,10 @@ def build_analysis_report(
             "Ambiguous bases are counted separately.",
             "AI-assisted insights are explainable, rule-based observations.",
             "Pattern observations do not establish gene function or biological significance.",
+            "Quality control checks sequence validity, length, GC content "
+            "and ambiguous nucleotide percentage.",
+            "FASTA sequence-level quality indicators are not Phred sequencing "
+            "quality scores.",
             "Pairwise identity, when included, follows GeneWeaver's existing "
             "alignment calculation.",
         ],
@@ -85,10 +109,10 @@ def export_json_report(report, output_file):
 
 def export_csv_report(report, output_file):
     """
-    Save sequence-level analysis results as CSV.
+    Save sequence-level analysis and quality-control results as CSV.
 
-    Nested motif and comparison results are stored as JSON strings
-    in their respective CSV columns.
+    Nested motif, comparison, pattern and QC details are stored
+    as JSON strings in their respective CSV columns.
     """
 
     if not isinstance(report, dict) or "sequences" not in report:
@@ -111,6 +135,11 @@ def export_csv_report(report, output_file):
         "patterns",
         "insights",
         "reverse_complement",
+        "quality_status",
+        "ambiguous_percentage",
+        "invalid_bases",
+        "quality_warnings",
+        "quality_errors",
         "motif_search_results",
         "pairwise_comparison",
     ]
@@ -126,6 +155,7 @@ def export_csv_report(report, output_file):
 
         for sequence in report["sequences"]:
             statistics = sequence["statistics"]
+            quality = sequence.get("quality_control", {})
 
             writer.writerow(
                 {
@@ -148,6 +178,20 @@ def export_csv_report(report, output_file):
                         ensure_ascii=False,
                     ),
                     "reverse_complement": sequence["reverse_complement"],
+                    "quality_status": quality.get("status", ""),
+                    "ambiguous_percentage": quality.get("ambiguous_percentage", ""),
+                    "invalid_bases": json.dumps(
+                        quality.get("invalid_bases", []),
+                        ensure_ascii=False,
+                    ),
+                    "quality_warnings": json.dumps(
+                        quality.get("warnings", []),
+                        ensure_ascii=False,
+                    ),
+                    "quality_errors": json.dumps(
+                        quality.get("errors", []),
+                        ensure_ascii=False,
+                    ),
                     "motif_search_results": json.dumps(
                         report.get("motif_search_results", []),
                         ensure_ascii=False,

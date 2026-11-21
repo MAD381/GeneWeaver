@@ -27,6 +27,7 @@ from data_pipeline.analysis_report import (
     export_json_report,
     export_csv_report,
 )
+from data_pipeline.quality_control import run_quality_control
 
 st.set_page_config(
     page_title="GeneWeaver DNA Intelligence",
@@ -115,6 +116,7 @@ try:
 
     if search_submitted:
         st.session_state["geneweaver_motif_results"] = None
+
         try:
             motif_results = search_motif(records, motif_input)
             st.session_state["geneweaver_motif_results"] = motif_results
@@ -252,6 +254,7 @@ try:
 
         if comparison_submitted:
             st.session_state["geneweaver_pairwise_comparison"] = None
+
             try:
                 first_record = records[first_index]
                 second_record = records[second_index]
@@ -295,7 +298,7 @@ try:
                 st.text(f"Sequence 2 ({second_record.id}):")
                 st.code(comparison["aligned_sequence_2"])
 
-                st.write(f"**Alignment score:** " f"{comparison['alignment_score']}")
+                st.write(f"**Alignment score:** {comparison['alignment_score']}")
 
                 st.write(
                     f"**Alignment length:** "
@@ -361,6 +364,7 @@ try:
                     "sequence_2_id": second_record.id,
                     **comparison,
                 }
+
                 st.session_state["geneweaver_pairwise_comparison"] = comparison_report
 
                 st.download_button(
@@ -408,10 +412,12 @@ try:
         "GC Content",
         f"{statistics['GC_percentage']}%",
     )
+
     stat_columns[1].metric(
         "AT Content",
         f"{statistics['AT_percentage']}%",
     )
+
     stat_columns[2].metric("A Bases", statistics["A"])
     stat_columns[3].metric("T Bases", statistics["T"])
 
@@ -483,6 +489,117 @@ try:
         file_name=f"{selected_record.id}_geneweaver_report.json",
         mime="application/json",
     )
+    # DNA Quality Control Dashboard
+    st.divider()
+    st.header("🧬 DNA Quality Control")
+
+    st.write(
+        "Check sequence length, GC content, ambiguous bases, and invalid bases "
+        "for every sequence in the uploaded FASTA file."
+    )
+
+    qc_report = run_quality_control(records)
+    qc_summary = qc_report["summary"]
+    qc_results = qc_report["results"]
+
+    # Quality Control Summary
+    st.subheader("Quality Control Summary")
+
+    qc_col1, qc_col2, qc_col3, qc_col4 = st.columns(4)
+
+    qc_col1.metric(
+        "Total Sequences",
+        qc_summary.get("total_sequences", len(qc_results)),
+    )
+
+    qc_col2.metric(
+        "Passed",
+        qc_summary.get("passed", 0),
+    )
+
+    qc_col3.metric(
+        "Warnings",
+        qc_summary.get("warnings", 0),
+    )
+
+    qc_col4.metric(
+        "Failed",
+        qc_summary.get("failed", 0),
+    )
+
+    # Individual Sequence Quality Results
+    st.subheader("Individual Sequence Quality Results")
+
+    qc_table = []
+
+    for index, result in enumerate(qc_results):
+        qc_table.append(
+            {
+                "Sequence ID": result.get(
+                    "sequence_id",
+                    (
+                        records[index].id
+                        if index < len(records)
+                        else f"Sequence {index + 1}"
+                    ),
+                ),
+                "Status": result.get("status", "Unknown"),
+                "Length": result.get("length", 0),
+                "GC Percentage": result.get("GC_percentage"),
+                "Ambiguous Percentage": result.get("ambiguous_percentage"),
+                "Invalid Bases": str(result.get("invalid_bases", [])),
+                "Warnings": "; ".join(str(item) for item in result.get("warnings", [])),
+                "Errors": "; ".join(str(item) for item in result.get("errors", [])),
+            }
+        )
+
+    st.dataframe(
+        qc_table,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Detailed Quality Control Information
+    st.subheader("Detailed Quality Control Results")
+
+    for index, result in enumerate(qc_results):
+        sequence_id = result.get(
+            "sequence_id",
+            records[index].id if index < len(records) else f"Sequence {index + 1}",
+        )
+
+        status = str(result.get("status", "Unknown")).upper()
+
+        with st.expander(f"{sequence_id} — {status}"):
+            st.write(f"**Sequence length:** {result.get('length', 0)}")
+
+            st.write(f"**GC percentage:** {result.get('GC_percentage')}")
+
+            st.write(f"**Ambiguous bases:** " f"{result.get('ambiguous_bases', 0)}")
+
+            st.write(
+                f"**Ambiguous percentage:** " f"{result.get('ambiguous_percentage')}"
+            )
+
+            st.write(f"**Invalid bases:** " f"{result.get('invalid_bases', [])}")
+
+            warnings = result.get("warnings", [])
+            errors = result.get("errors", [])
+
+            if errors:
+                st.error("\n".join(str(item) for item in errors))
+
+            if warnings:
+                st.warning("\n".join(str(item) for item in warnings))
+
+            if not warnings and not errors:
+                st.success("No quality warnings or errors detected.")
+
+    st.caption(
+        "These are computational sequence-quality checks, not clinical or "
+        "experimental validation. FASTA files do not necessarily contain "
+        "Phred quality scores."
+    )
 
     # Consolidated Analysis Report
     st.divider()
@@ -505,13 +622,21 @@ try:
             report_dir,
             "geneweaver_consolidated_report.json",
         )
+
         csv_output_path = os.path.join(
             report_dir,
             "geneweaver_consolidated_report.csv",
         )
 
-        export_json_report(consolidated_report, json_output_path)
-        export_csv_report(consolidated_report, csv_output_path)
+        export_json_report(
+            consolidated_report,
+            json_output_path,
+        )
+
+        export_csv_report(
+            consolidated_report,
+            csv_output_path,
+        )
 
         with open(json_output_path, "rb") as json_file:
             consolidated_json_data = json_file.read()
