@@ -3,6 +3,7 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import hashlib
+import time
 
 VALID_DNA_BASES = set("ACGTRYSWKMBDHVN")
 
@@ -16,7 +17,6 @@ def find_invalid_bases(sequence):
     """Return invalid DNA characters and their 1-based positions."""
 
     sequence = str(sequence).strip().upper()
-
     invalid_bases = []
 
     for position, base in enumerate(sequence, start=1):
@@ -60,7 +60,6 @@ def calculate_sequence_statistics(sequence):
     }
 
     gc_percentage = ((counts["G"] + counts["C"]) / length) * 100
-
     at_percentage = ((counts["A"] + counts["T"]) / length) * 100
 
     ambiguous_bases = sum(1 for base in sequence if base not in "ATGC")
@@ -118,7 +117,6 @@ def detect_duplicates(records):
 
     seen_ids = set()
     duplicate_ids = []
-
     sequence_groups = {}
 
     for record in records:
@@ -153,7 +151,6 @@ def parse_fasta(file_path):
     if not file_path.exists():
         raise FileNotFoundError(f"FASTA file not found: {file_path}")
 
-    # Explicitly open and close the FASTA file.
     with open(file_path, "r", encoding="utf-8") as fasta_file:
         records = list(SeqIO.parse(fasta_file, "fasta"))
 
@@ -194,12 +191,10 @@ def chunk_sequence(sequence, chunk_size=1000, overlap=100):
         raise ValueError("overlap must be smaller than chunk_size.")
 
     chunks = []
-
     step = chunk_size - overlap
 
     for start in range(0, len(sequence), step):
         end = min(start + chunk_size, len(sequence))
-
         chunk = sequence[start:end]
 
         chunks.append((start, end, chunk))
@@ -241,8 +236,16 @@ def analyze_chunks(chunks):
 # --------------------------------------------------
 
 
-def process_fasta(input_file, output_dir, chunk_size=1000, overlap=100):
-    """Parse, validate, analyze and save FASTA sequence chunks."""
+def process_fasta(
+    input_file,
+    output_dir,
+    chunk_size=1000,
+    overlap=100,
+    progress_callback=None,
+):
+    """Process FASTA sequences and save chunks efficiently."""
+
+    start_time = time.perf_counter()
 
     records = parse_fasta(input_file)
 
@@ -251,30 +254,41 @@ def process_fasta(input_file, output_dir, chunk_size=1000, overlap=100):
 
     output_file = output_dir / "processed_chunks.fasta"
 
-    processed_records = []
+    total_chunks = 0
+    total_sequences = len(records)
 
-    for record in records:
-        sequence = str(record.seq).upper()
+    with open(output_file, "w", encoding="utf-8") as fasta_output:
+        for sequence_index, record in enumerate(records, start=1):
+            sequence = str(record.seq).upper()
 
-        chunks = chunk_sequence(
-            sequence,
-            chunk_size=chunk_size,
-            overlap=overlap,
-        )
-
-        for index, (start, end, chunk) in enumerate(chunks, start=1):
-            chunk_record = SeqRecord(
-                Seq(chunk),
-                id=f"{record.id}_chunk_{index}",
-                description=f"start={start} end={end}",
+            chunks = chunk_sequence(
+                sequence,
+                chunk_size=chunk_size,
+                overlap=overlap,
             )
 
-            processed_records.append(chunk_record)
+            for chunk_index, (start, end, chunk) in enumerate(chunks, start=1):
+                chunk_record = SeqRecord(
+                    Seq(chunk),
+                    id=f"{record.id}_chunk_{chunk_index}",
+                    description=f"start={start} end={end}",
+                )
 
-    SeqIO.write(processed_records, output_file, "fasta")
+                SeqIO.write(chunk_record, fasta_output, "fasta")
+                total_chunks += 1
+
+            if progress_callback is not None:
+                progress_callback(
+                    sequence_index,
+                    total_sequences,
+                    total_chunks,
+                )
+
+    processing_time = time.perf_counter() - start_time
 
     return {
-        "total_sequences": len(records),
-        "total_chunks": len(processed_records),
+        "total_sequences": total_sequences,
+        "total_chunks": total_chunks,
         "output_file": str(output_file),
+        "processing_time_seconds": round(processing_time, 4),
     }
