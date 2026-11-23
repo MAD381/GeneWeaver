@@ -1,22 +1,14 @@
-
 import argparse
 import sys
 from pathlib import Path
-
-from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 from tqdm import tqdm
 
-from data_pipeline.fasta_processor import (
-    parse_fasta,
-    chunk_sequence,
-)
-
+from data_pipeline.fasta_processor import process_fasta
 
 # ==========================================================
 # COMMAND-LINE INPUT VALIDATION
 # ==========================================================
+
 
 def positive_integer(value):
     """Accept only positive integers."""
@@ -48,6 +40,7 @@ def non_negative_integer(value):
 # WEEK 2: FASTA PROCESSING PIPELINE
 # ==========================================================
 
+
 def run_pipeline(
     input_file,
     output_dir,
@@ -56,77 +49,56 @@ def run_pipeline(
     ai_analysis=False,
     training_csv=None,
 ):
-    """Process FASTA records and optionally run DNA intelligence."""
+    """Run FASTA processing and optional DNA intelligence."""
 
     input_path = Path(input_file)
     output_path = Path(output_dir)
 
     if not input_path.is_file():
-        raise FileNotFoundError(
-            f"Input FASTA file not found: {input_path}"
-        )
+        raise FileNotFoundError(f"Input FASTA file not found: {input_path}")
 
-    if chunk_size <= 0:
-        raise ValueError("Chunk size must be greater than zero.")
-
-    if overlap < 0 or overlap >= chunk_size:
-        raise ValueError(
-            "Overlap must be non-negative and smaller than chunk size."
-        )
-
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Use the existing Week 1 FASTA parser.
-    records = parse_fasta(str(input_path))
-
-    if not records:
-        raise ValueError("No FASTA sequences found.")
-
-    processed_records = []
-    total_chunks = 0
+    if overlap >= chunk_size:
+        raise ValueError("Overlap must be smaller than chunk size.")
 
     print("\n====================================")
     print("       GENEWEAVER - WEEK 1 & 2")
     print("====================================")
     print("FASTA Processing Pipeline")
     print("------------------------------------")
-    print("Processing sequences...\n")
 
-    # Generate overlapping chunks.
-    for record in tqdm(records, desc="Processing", unit="sequence"):
-        record_id = record.id
-        sequence = str(record.seq)
+    progress_bar = None
 
-        chunks = chunk_sequence(
-            sequence,
-            chunk_size,
-            overlap,
-        )
+    def update_progress(done, total, chunks):
+        nonlocal progress_bar
 
-        for index, (start, end, chunk) in enumerate(chunks, start=1):
-            processed_record = SeqRecord(
-                Seq(chunk),
-                id=f"{record_id}_chunk_{index}",
-                description=f"start={start} end={end}",
+        if progress_bar is None:
+            progress_bar = tqdm(
+                total=total,
+                desc="Processing",
+                unit="sequence",
             )
 
-            processed_records.append(processed_record)
-            total_chunks += 1
+        progress_bar.update(1)
+        progress_bar.set_postfix(chunks=chunks)
 
-    # Save the processed FASTA file.
-    output_file = output_path / "processed_chunks.fasta"
-
-    SeqIO.write(
-        processed_records,
-        str(output_file),
-        "fasta",
-    )
+    try:
+        result = process_fasta(
+            input_file=input_path,
+            output_dir=output_path,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            progress_callback=update_progress,
+        )
+    finally:
+        if progress_bar is not None:
+            progress_bar.close()
 
     print("\nFASTA processing completed!")
     print("------------------------------------")
-    print(f"Sequences processed : {len(records)}")
-    print(f"Chunks generated    : {total_chunks}")
-    print(f"Output file         : {output_file}")
+    print(f"Sequences processed : {result['total_sequences']}")
+    print(f"Chunks generated    : {result['total_chunks']}")
+    print(f"Processing time     : " f"{result['processing_time_seconds']} seconds")
+    print(f"Output file         : {result['output_file']}")
     print("Status              : SUCCESS")
 
     # ======================================================
@@ -139,33 +111,35 @@ def run_pipeline(
 
         from ai_engine.dna_intelligence import run_ai_analysis
 
+        records = None
+
+        # AI analysis uses the original FASTA records.
+        from data_pipeline.fasta_processor import parse_fasta
+
+        records = parse_fasta(input_path)
+
         run_ai_analysis(
             records=records,
             output_dir=output_path,
             training_csv=training_csv,
         )
 
-    return {
-        "sequences_processed": len(records),
-        "chunks_generated": total_chunks,
-        "output_file": str(output_file),
-    }
+    return result
 
 
 # ==========================================================
 # COMMAND-LINE INTERFACE
 # ==========================================================
 
+
 def main():
 
     parser = argparse.ArgumentParser(
         description=(
-            "GeneWeaver: FASTA Processing and "
-            "Hybrid DNA Intelligence Pipeline"
+            "GeneWeaver: FASTA Processing and " "Hybrid DNA Intelligence Pipeline"
         )
     )
 
-    # Existing Week 2 arguments.
     parser.add_argument(
         "--input",
         default="data/sample.fasta",
@@ -192,7 +166,6 @@ def main():
         help="Overlapping bases between chunks",
     )
 
-    # New Hybrid AI arguments.
     parser.add_argument(
         "--ai-analysis",
         action="store_true",
